@@ -1,6 +1,6 @@
 [project]
 name = "voice-relay"
-version = "0.1.0"
+version = "0.2.0"
 description = "iOS full-duplex voice relay: ChatGPT Live + Beatrice 2 voice conversion"
 requires-python = ">=3.12"
 dependencies = [
