@@ -71,10 +71,16 @@ Copy-Item relay.example.toml relay.toml
 uv run relay --probe-cursor
 ```
 
-このコマンドは relay.toml の設定どおりの位置・サイズでEdgeを起動し、
-カーソル座標を表示し続ける。**音声モード開始ボタンにカーソルを合わせて**
-表示された x/y を relay.toml の `[[browser.clicks]]` に記入する。
-プロファイルは `browser-profile/`(gitignore済み)に保存される。
+手順: relay.toml の `[browser]` に exe / url / user_data_dir と
+`window_position` / `window_size` を先に記入しておく(`clicks` はまだ不要)。
+`--probe-cursor` はその位置・サイズでEdgeを起動し、カーソル座標を表示し続ける。
+**音声モード開始ボタンにカーソルを合わせて**表示された x/y を
+`[[browser.clicks]]` に記入すれば完成(座標は起動位置に依存するため、
+必ず本番と同じ position/size で測ること)。初回はこのウィンドウで
+ChatGPT に手動ログインする。プロファイルは `browser-profile/`(gitignore済み)。
+
+位置自体を試行錯誤したい場合は、tomlを書き換えずに
+`--window-position X,Y --window-size W,H` で一時上書きして試せる。
 
 ブラウザ側の音声デバイスは **出力 = CABLE-A Input、マイク = CABLE-B Output**
 に設定しておく(Windowsの「アプリの音量とデバイスの基本設定」か、サイトの設定)。

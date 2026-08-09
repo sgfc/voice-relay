@@ -97,6 +97,17 @@ def test_browser_missing_required_key(tmp_path: Path) -> None:
         load_config(p)
 
 
+def test_parse_xy() -> None:
+    from relay.config import parse_xy
+
+    assert parse_xy("100,200") == (100, 200)
+    assert parse_xy(" 10 , 20 ") == (10, 20)
+    with pytest.raises(ValueError):
+        parse_xy("100")
+    with pytest.raises(ValueError):
+        parse_xy("a,b")
+
+
 def test_browser_argv() -> None:
     b = BrowserConfig(
         exe=Path("chrome.exe"),

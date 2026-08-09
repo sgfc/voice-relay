@@ -100,6 +100,28 @@ class RelayConfig:
         return bool(self.beatrice_exe and self.plugin and self.model)
 
 
+def parse_xy(text: str) -> tuple[int, int]:
+    """CLI の "100,200" 形式を (100, 200) にする。"""
+    parts = text.split(",")
+    if len(parts) != 2:
+        raise ValueError(f"'x,y' 形式で指定してください: {text!r}")
+    return (int(parts[0].strip()), int(parts[1].strip()))
+
+
+def default_browser_exe() -> Path | None:
+    """既知の場所から Chromium 系ブラウザを探す (probe の既定値用)。"""
+    candidates = [
+        Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+        Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+
 def load_config(path: Path) -> RelayConfig:
     """TOML を読み RelayConfig を返す。未知キーはエラーにして事故を防ぐ。"""
     with open(path, "rb") as f:

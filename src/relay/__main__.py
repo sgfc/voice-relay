@@ -41,7 +41,11 @@ def main() -> None:
     ap.add_argument("--list-devices", action="store_true",
                     help="オーディオデバイス一覧を表示して終了")
     ap.add_argument("--probe-cursor", action="store_true",
-                    help="カーソル座標を表示し続ける (クリック座標調査用)")
+                    help="設定の位置/サイズでブラウザを起動し、カーソル座標を表示し続ける")
+    ap.add_argument("--window-position", default=None, metavar="X,Y",
+                    help="ブラウザウィンドウ位置の上書き (probe での試行錯誤用)")
+    ap.add_argument("--window-size", default=None, metavar="W,H",
+                    help="ブラウザウィンドウサイズの上書き (同上)")
     args = ap.parse_args()
 
     if args.list_devices:
@@ -64,15 +68,33 @@ def main() -> None:
 
     if args.probe_cursor:
         from relay.browser import probe_cursor_loop
+        from relay.config import BrowserConfig, default_browser_exe, parse_xy
 
-        if config.browser is not None:
-            import subprocess
+        bc = config.browser
+        if bc is None:
+            # [browser] 未設定でも既定値で起動できるようにする (初期設定の試行錯誤用)
+            exe = default_browser_exe()
+            if exe is None:
+                print("エラー: ブラウザが見つかりません。relay.toml の [browser] で exe を指定してください。")
+                return
+            bc = BrowserConfig(
+                exe=exe,
+                url="https://chatgpt.com/",
+                user_data_dir=Path("browser-profile").resolve(),
+            )
+        if args.window_position:
+            bc.window_position = parse_xy(args.window_position)
+        if args.window_size:
+            bc.window_size = parse_xy(args.window_size)
 
-            subprocess.Popen(config.browser.to_argv())
-            print("設定どおりの位置/サイズでブラウザを起動しました (計測後もそのまま残ります)")
-        else:
-            print("注意: [browser] 設定が無いためブラウザは起動しません。")
-            print("座標は必ず固定位置/サイズで起動したウィンドウ上で測ってください。")
+        import subprocess
+
+        subprocess.Popen(bc.to_argv())
+        print(f"ブラウザ起動: position={list(bc.window_position)} size={list(bc.window_size)}")
+        print("この位置/サイズでよければ、relay.toml の [browser] に以下を記入:")
+        print(f"  window_position = {list(bc.window_position)}")
+        print(f"  window_size = {list(bc.window_size)}")
+        print("位置を変えて試すには: --window-position X,Y --window-size W,H")
         probe_cursor_loop()
         return
 
