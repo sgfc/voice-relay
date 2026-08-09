@@ -140,7 +140,12 @@ def test_offer_answers_immediately_and_aborts_on_bg_failure() -> None:
                     assert payload.get("sdp"), "起動失敗でも answer は返る"
 
             await asyncio.wait_for(started.wait(), timeout=5)
-            await asyncio.sleep(0.8)  # 失敗発生 + _abort_session の完了を待つ
+            # _abort_session の完了を待つ (ハンドシェイク中の pc.close は
+            # DTLS シャットダウンの再試行で数秒かかることがある)
+            for _ in range(80):
+                if server._state == SessionState.IDLE and not server._pcs:
+                    break
+                await asyncio.sleep(0.1)
 
             assert server._state == SessionState.IDLE
             assert not server._pcs

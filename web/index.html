@@ -71,6 +71,8 @@
 
     async function start() {
       btn.disabled = true;
+      const t0 = performance.now();
+      const lap = (label) => log(`${label}: ${Math.round(performance.now() - t0)}ms`);
       try {
         // AEC/NS/AGC は iOS 側で担当する (docs/spec.md: PC 側は全経路仮想でエコー無し)。
         // getUserMedia はユーザージェスチャ内で呼ぶ必要がある (Safari のマイク許可要件)。
@@ -78,12 +80,13 @@
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: false,
         });
+        lap("mic");
 
         pc = new RTCPeerConnection();
 
         pc.addEventListener("connectionstatechange", () => {
           log("connection:", pc.connectionState);
-          if (pc.connectionState === "connected") setState("active");
+          if (pc.connectionState === "connected") { setState("active"); lap("connected (会話可能)"); }
           else if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
             // バックグラウンド起動の失敗で切断された場合、原因を取得して表示する
             fetch("/status").then((r) => r.json()).then((s) => {
@@ -106,7 +109,9 @@
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         // ICE gathering の完了を待ってから offer を送る (Trickle ICE 不使用の簡易版)。
+        // STUN 未設定 (ホスト候補のみ) なので通常は数十ms で complete になる。
         await waitIceGathering(pc);
+        lap("ice-gathering");
 
         const resp = await fetch("/offer", {
           method: "POST",
@@ -129,7 +134,7 @@
           throw new Error(`unexpected /offer response: ${body.slice(0, 200)}`);
         }
         await pc.setRemoteDescription(answer);
-        log("answer applied");
+        lap("answer");
 
         btn.textContent = "通話終了";
         btn.classList.add("on");
@@ -151,8 +156,8 @@
           }
         }
         pc.addEventListener("icegatheringstatechange", check);
-        // フォールバック: gathering が終わらない場合も 2 秒で送る。
-        setTimeout(resolve, 2000);
+        // フォールバック: gathering が終わらない場合も送る (STUN なしなら本来即完了)。
+        setTimeout(resolve, 800);
       });
     }
 

@@ -31,7 +31,7 @@ from pathlib import Path
 import av
 import numpy as np
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
 from aiortc.mediastreams import MediaStreamError, MediaStreamTrack
 
@@ -160,7 +160,10 @@ class RelayServer:
         params = await request.json()
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
-        pc = RTCPeerConnection()
+        # STUN を使わない (iceServers 空)。経路は常に Tailscale/LAN でホスト候補
+        # だけで届くため、aiortc デフォルトの Google STUN への問い合わせ待ち
+        # (全インターフェース分、環境により数秒) を丸ごと省いて接続を速くする。
+        pc = RTCPeerConnection(RTCConfiguration(iceServers=[]))
         self._pcs.add(pc)
         self._state = SessionState.CONNECTING
         log.info("offer received (mode=%s); peer connections=%d", self.config.mode, len(self._pcs))
@@ -354,9 +357,14 @@ class RelayServer:
         """異常が確定した時点での全停止。ブラウザも taskkill する
         (会話モードの時間を消費させない・復帰不能なまま放置しない)。"""
         log.error("aborting session: %s", reason)
-        await self._close_all()
-        await self._teardown_pipeline()
-        self._state = SessionState.IDLE
+        try:
+            # 先にブラウザ/beatrice を止める (会話モードの消費を最優先で断つ)。
+            # pc.close() はハンドシェイク中だとハングしうるので後回し + タイムアウト。
+            await self._teardown_pipeline()
+            await self._close_all()
+        finally:
+            # 途中で何か失敗しても状態だけは必ず idle に戻す
+            self._state = SessionState.IDLE
 
     async def _watchdog(self) -> None:
         """デッドマンスイッチ: 接続が猶予時間を超えて失われたら全停止する。
@@ -409,7 +417,11 @@ class RelayServer:
     async def _close_all(self) -> None:
         pcs, self._pcs = list(self._pcs), set()
         for pc in pcs:
-            await pc.close()
+            try:
+                # ハンドシェイク中の close はハング・失敗しうる。掃除は続行する
+                await asyncio.wait_for(pc.close(), timeout=3)
+            except Exception:
+                log.debug("pc.close() failed or timed out", exc_info=True)
 
     async def _on_shutdown(self, app: web.Application) -> None:
         await self._close_all()
