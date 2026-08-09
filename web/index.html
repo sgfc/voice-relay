@@ -56,6 +56,7 @@
 
     let pc = null;
     let localStream = null;
+    let readyTimer = null;
 
     function log(...args) {
       const line = args.join(" ");
@@ -73,6 +74,24 @@
       btn.disabled = true;
       const t0 = performance.now();
       const lap = (label) => log(`${label}: ${Math.round(performance.now() - t0)}ms`);
+
+      // WebRTC が繋がっても PC 側パイプライン (ブラウザ/beatrice) が未準備の間は
+      // まだ GPT Live に声が届かないため「接続中」表示を維持し、/status の ready を
+      // 見て active に切り替える (起動と接続は並列に走る)。
+      const waitPipelineReady = async () => {
+        if (!pc) return; // 既に切断済み
+        try {
+          const s = await (await fetch("/status")).json();
+          if (s.ready === false) {
+            setState("connecting");
+            readyTimer = setTimeout(waitPipelineReady, 500);
+            return;
+          }
+        } catch { /* status が取れなければ従来どおり active 扱い */ }
+        setState("active");
+        lap("ready (会話可能)");
+      };
+
       try {
         // AEC/NS/AGC は iOS 側で担当する (docs/spec.md: PC 側は全経路仮想でエコー無し)。
         // getUserMedia はユーザージェスチャ内で呼ぶ必要がある (Safari のマイク許可要件)。
@@ -86,7 +105,7 @@
 
         pc.addEventListener("connectionstatechange", () => {
           log("connection:", pc.connectionState);
-          if (pc.connectionState === "connected") { setState("active"); lap("connected (会話可能)"); }
+          if (pc.connectionState === "connected") { lap("connected"); waitPipelineReady(); }
           else if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
             // バックグラウンド起動の失敗で切断された場合、原因を取得して表示する
             fetch("/status").then((r) => r.json()).then((s) => {
@@ -162,6 +181,7 @@
     }
 
     function hangup() {
+      if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
       if (pc) { pc.close(); pc = null; }
       if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
       remote.srcObject = null;

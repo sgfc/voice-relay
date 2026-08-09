@@ -247,12 +247,23 @@ class RelayServer:
         return web.json_response({"state": self._state.value})
 
     async def _status(self, request: web.Request) -> web.Response:
+        # ready: 下り経路が実際に音を運べる状態か。browser モードでは
+        # エンジン (CABLE + ブラウザ起動/クリック完了) と、設定されていれば
+        # beatrice の READY まで揃って true。WebRTC 接続とパイプライン起動は
+        # 並列なので、クライアントはこれを見て「接続中」表示を維持する。
+        if self.config.mode == "browser":
+            ready = self._engine is not None and (
+                not self.config.beatrice_configured or self._beatrice is not None
+            )
+        else:
+            ready = True
         return web.json_response(
             {
                 "state": self._state.value,
                 "mode": self.config.mode,
                 "connections": len(self._pcs),
                 "beatrice": self._beatrice is not None,
+                "ready": ready,
                 "error": self._last_error,
             }
         )

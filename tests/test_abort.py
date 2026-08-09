@@ -90,6 +90,36 @@ def test_downlink_failure_triggers_abort() -> None:
     asyncio.run(scenario())
 
 
+def test_status_ready_reflects_pipeline() -> None:
+    """/status の ready: browser モードではパイプライン起動完了まで false。
+    クライアントはこれを見て「接続中」表示を維持する。"""
+
+    async def scenario() -> None:
+        import json
+
+        server = RelayServer(RelayConfig(mode="browser"))
+        resp = await server._status(None)
+        assert json.loads(resp.text)["ready"] is False  # エンジン未起動
+
+        server._engine = DummyEngine()
+        resp = await server._status(None)
+        assert json.loads(resp.text)["ready"] is True  # beatrice 未設定なら engine のみで可
+
+        # beatrice が設定されている場合は READY まで false
+        server2 = RelayServer(RelayConfig(
+            mode="browser", beatrice_exe="h.exe", plugin="p.vst3", model="m.toml"
+        ))
+        server2._engine = DummyEngine()
+        resp = await server2._status(None)
+        assert json.loads(resp.text)["ready"] is False
+
+        echo = RelayServer(RelayConfig(mode="echo"))
+        resp = await echo._status(None)
+        assert json.loads(resp.text)["ready"] is True  # echo は常に ready
+
+    asyncio.run(scenario())
+
+
 def test_abort_session_full_stop() -> None:
     """_abort_session はパイプラインを畳んで idle に戻す。"""
 
