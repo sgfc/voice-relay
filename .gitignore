@@ -1,0 +1,12 @@
+build/
+.venv/
+relay.toml
+browser-profile/
+.claude/
+__pycache__/
+*.pyc
+dist/
+*.wav
+!tests/fixtures/*.wav
+.pytest_cache/
+third_party/

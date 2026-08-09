@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>voice-relay</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1.5rem; padding: 2rem;
+      font: 16px/1.5 -apple-system, system-ui, sans-serif;
+    }
+    h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    #call {
+      appearance: none; border: none; border-radius: 999px;
+      padding: 1.1rem 2.6rem; font-size: 1.15rem; font-weight: 600;
+      color: #fff; background: #2f6df6; cursor: pointer;
+      transition: background .15s, transform .05s;
+      min-width: 12rem;
+    }
+    #call:active { transform: scale(.97); }
+    #call.on { background: #d33; }
+    #call:disabled { opacity: .5; cursor: default; }
+    #state { font-variant: small-caps; letter-spacing: .04em; opacity: .8; }
+    #state .dot {
+      display: inline-block; width: .6em; height: .6em; border-radius: 50%;
+      background: #999; margin-right: .4em; vertical-align: baseline;
+    }
+    #state.connecting .dot { background: #e6a100; }
+    #state.active .dot { background: #23a55a; }
+    #log {
+      width: 100%; max-width: 32rem; margin: 0;
+      font: 12px/1.45 ui-monospace, Menlo, monospace;
+      white-space: pre-wrap; word-break: break-word; opacity: .6;
+      max-height: 30vh; overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>voice-relay</h1>
+  <button id="call">通話開始</button>
+  <div id="state" class="idle"><span class="dot"></span><span id="stateText">idle</span></div>
+  <!-- iOS Safari は自動再生を許可しないため、初回タップのユーザー操作で再生を開始する -->
+  <audio id="remote" autoplay playsinline></audio>
+  <pre id="log"></pre>
+
+  <script>
+    const btn = document.getElementById("call");
+    const stateEl = document.getElementById("state");
+    const stateText = document.getElementById("stateText");
+    const remote = document.getElementById("remote");
+    const logEl = document.getElementById("log");
+
+    let pc = null;
+    let localStream = null;
+
+    function log(...args) {
+      const line = args.join(" ");
+      logEl.textContent += line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(...args);
+    }
+
+    function setState(s) {
+      stateEl.className = s;
+      stateText.textContent = s;
+    }
+
+    async function start() {
+      btn.disabled = true;
+      try {
+        // AEC/NS/AGC は iOS 側で担当する (docs/spec.md: PC 側は全経路仮想でエコー無し)。
+        // getUserMedia はユーザージェスチャ内で呼ぶ必要がある (Safari のマイク許可要件)。
+        localStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false,
+        });
+
+        pc = new RTCPeerConnection();
+
+        pc.addEventListener("connectionstatechange", () => {
+          log("connection:", pc.connectionState);
+          if (pc.connectionState === "connected") setState("active");
+          else if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
+            // バックグラウンド起動の失敗で切断された場合、原因を取得して表示する
+            fetch("/status").then((r) => r.json()).then((s) => {
+              if (s.error) log("サーバー側エラー:", s.error);
+            }).catch(() => {});
+            hangup();
+          }
+        });
+
+        pc.addEventListener("track", (ev) => {
+          log("remote track:", ev.track.kind);
+          remote.srcObject = ev.streams[0];
+        });
+
+        for (const track of localStream.getTracks()) {
+          pc.addTrack(track, localStream);
+        }
+
+        setState("connecting");
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        // ICE gathering の完了を待ってから offer を送る (Trickle ICE 不使用の簡易版)。
+        await waitIceGathering(pc);
+
+        const resp = await fetch("/offer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sdp: pc.localDescription.sdp,
+            type: pc.localDescription.type,
+          }),
+        });
+        // サーバーエラーを SDP として解釈しないよう、先に status と形式を確認する
+        // (Safari は不正な SDP に「The string did not match the expected pattern」
+        //  という分かりにくいエラーを出す)
+        const body = await resp.text();
+        let answer;
+        try { answer = JSON.parse(body); } catch { answer = null; }
+        if (!resp.ok) {
+          throw new Error(answer?.error || `server error (HTTP ${resp.status}): ${body.slice(0, 200)}`);
+        }
+        if (!answer?.sdp || !answer?.type) {
+          throw new Error(`unexpected /offer response: ${body.slice(0, 200)}`);
+        }
+        await pc.setRemoteDescription(answer);
+        log("answer applied");
+
+        btn.textContent = "通話終了";
+        btn.classList.add("on");
+      } catch (err) {
+        log("error:", err.message || err);
+        hangup();
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function waitIceGathering(pc) {
+      if (pc.iceGatheringState === "complete") return Promise.resolve();
+      return new Promise((resolve) => {
+        function check() {
+          if (pc.iceGatheringState === "complete") {
+            pc.removeEventListener("icegatheringstatechange", check);
+            resolve();
+          }
+        }
+        pc.addEventListener("icegatheringstatechange", check);
+        // フォールバック: gathering が終わらない場合も 2 秒で送る。
+        setTimeout(resolve, 2000);
+      });
+    }
+
+    function hangup() {
+      if (pc) { pc.close(); pc = null; }
+      if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
+      remote.srcObject = null;
+      setState("idle");
+      btn.textContent = "通話開始";
+      btn.classList.remove("on");
+      btn.disabled = false;
+    }
+
+    btn.addEventListener("click", () => {
+      if (pc) {
+        fetch("/stop", { method: "POST" }).catch(() => {});
+        hangup();
+      } else {
+        start();
+      }
+    });
+
+    // ?start 付きで開かれたら、ページ表示と同時にパイプライン起動を仕掛ける
+    // (iOSショートカットは「URLを開く」1アクションで済む)。起動完了後に
+    // 「通話開始」をタップすれば WebRTC 接続だけで会話が始まる。
+    // 起動中にタップしても壊れない (サーバー側で直列化されるので待つだけ)。
+    if (new URLSearchParams(location.search).has("start")) {
+      prewarm();
+    }
+
+    async function prewarm() {
+      log("起動: ブラウザ + Beatrice を準備しています…");
+      try {
+        const resp = await fetch("/start", { method: "POST" });
+        const body = await resp.text();
+        let json;
+        try { json = JSON.parse(body); } catch { json = null; }
+        if (!resp.ok) {
+          throw new Error(json?.error || `HTTP ${resp.status}: ${body.slice(0, 200)}`);
+        }
+        log(`起動: 準備完了 (state=${json?.state})。「通話開始」をタップしてください`);
+      } catch (err) {
+        log("起動エラー:", err.message || err);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+# voice-relay 設定ファイルの雛形。
+# relay.toml にコピーして自分の環境に合わせて編集する
+# (relay.toml はマシン固有パスを含むため .gitignore 済み)。
+
+[server]
+mode = "browser"   # "echo" = エコーバック試験 / "browser" = 本経路
+host = "0.0.0.0"
+port = 8080
+
+[beatrice]
+exe = "build/beatrice-host/Release/charadock-beatrice-host.exe"
+plugin = 'C:\path\to\beatrice_x.y.z.vst3'   # .vst3 本体 (Contents\x86_64-win\ 配下)
+model = 'C:\path\to\model\model.toml'       # モデル TOML (.bin と同一フォルダに置く)
+voice = 0
+pitch_shift = 0.0     # 半音単位、-24〜+24。声の高さはこちらで変える
+formant_shift = 0.0   # -2〜+2。声色 (こもり・幼さ) の微調整用
+# 他のチューニング (省略可): intonation (-1〜+3),
+# input_gain / output_gain (-60〜+20 dB), pitch_correction (0〜1)
+
+[audio]
+# 名前の部分一致か、`uv run relay --list-devices` の番号で指定
+cable_a = "CABLE-A Output"   # ブラウザ出力 (AI 原音) の取込元 (録音)
+cable_b = "CABLE-B Input"    # ブラウザマイクへの出力先 (再生)
+
+[deadman]
+grace_seconds = 20           # 接続喪失からブラウザ含め全停止するまでの猶予
+initial_grace_seconds = 90   # /start から初回接続までの猶予
+
+# [browser] セクションを書くと /start・初回接続時にブラウザを自動起動し、
+# 座標クリックで音声モードを開始する。省略時はブラウザ手動運用。
+# 座標は `uv run relay --probe-cursor` で調べる (ウィンドウ位置/サイズを
+# 固定しているので座標は毎回同じになる)。
+# 注意: 自動操作はログオンセッション内から起動したデーモンでのみ動く
+# (SSH/WSL からは不可)。ロック画面・スリープ中はクリックが届かない。
+#
+# Chromium 系 (Edge / Chrome) を指定する。フラグは共通。
+# [browser]
+# exe = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+# url = "https://chatgpt.com/"
+# user_data_dir = 'browser-profile'   # 専用プロファイル。リポジトリルート相対で可
+#                                     # (gitignore 済み。初回に手動ログインが必要)
+# window_position = [100, 100]
+# window_size = [1000, 800]
+#
+# [[browser.clicks]]        # 音声モード開始ボタン
+# x = 600
+# y = 700
+# delay = 8.0               # 起動からの待ち秒数 (ページ読み込みを見込む)
