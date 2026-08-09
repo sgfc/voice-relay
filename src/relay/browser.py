@@ -73,6 +73,35 @@ def click_at(x: int, y: int) -> None:
     send(_MOUSEEVENTF_LEFTUP)
 
 
+def bring_to_foreground(pid: int) -> bool:
+    """pid のトップレベル可視ウィンドウを前面化する (ベストエフォート)。
+
+    座標クリックは前面のウィンドウに当たるため、クリック直前の保険として呼ぶ。
+    Windows のフォーカス移動制限で失敗することもあるが、その場合も False を
+    返すだけでクリック自体は続行する。"""
+    if sys.platform != "win32":
+        return False
+    user32 = ctypes.windll.user32
+    found: list[int] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _enum(hwnd, _lparam):
+        if user32.IsWindowVisible(hwnd):
+            wnd_pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(wnd_pid))
+            if wnd_pid.value == pid:
+                found.append(hwnd)
+                return False  # 見つかったので列挙終了
+        return True
+
+    user32.EnumWindows(_enum, 0)
+    if not found:
+        return False
+    SW_RESTORE = 9
+    user32.ShowWindow(found[0], SW_RESTORE)  # 最小化されていたら戻す
+    return bool(user32.SetForegroundWindow(found[0]))
+
+
 def probe_cursor_loop() -> None:
     """カーソル座標を1秒ごとに表示する (クリック座標の調べ方: 目的のボタンに
     カーソルを置いて値を読む)。Ctrl+C で終了。"""
@@ -111,6 +140,10 @@ class BrowserController:
         self._proc = subprocess.Popen(argv)
         for i, step in enumerate(self.config.clicks):
             await asyncio.sleep(step.delay)
+            # 保険: 他のウィンドウに被られているとクリックがそちらに当たるため、
+            # クリック直前にブラウザを前面へ (失敗しても続行)
+            if not bring_to_foreground(self._proc.pid):
+                log.warning("could not bring browser to foreground; clicking anyway")
             log.info("click %d/%d at (%d, %d)", i + 1, len(self.config.clicks), step.x, step.y)
             click_at(step.x, step.y)
 
