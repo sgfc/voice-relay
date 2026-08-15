@@ -175,6 +175,15 @@ iOSショートカットから `POST /start` を叩いて先にブラウザを�
 - 変換音声・キャラクター声質の利用は各モデル/キャラクターの規約
   (上記「注意事項」・spec.md) に従ってください。
 
+## 謝辞
+
+- [CharaDock](https://github.com/ochisamu/CharaDock) (ochisamu氏) —
+  beatrice-host (ヘッドレスVST3ホスト) の実装を vendor して利用しています。
+  Realtime API + Beatrice 2 という構成の先行実証でもあり、本プロジェクトの
+  設計はここから多くを得ています。
+- [Project Beatrice](https://prj-beatrice.com) — 軽量・低遅延の声質変換
+  Beatrice 2 と公式モデルの無償公開に感謝します。
+
 ## License
 
 MIT([LICENSE](LICENSE))。ただし `native/beatrice-host/` は Apache-2.0 の
