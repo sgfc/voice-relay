@@ -21,7 +21,7 @@ Beatrice 2 の声質変換を噛ませる中継システム。Windows PC 上で�
 | ビルド環境 | Visual Studio 2022 (C++)、CMake 3.25+(初回のみ) |
 | 仮想ケーブル | [VB-Cable A+B パック](https://vb-audio.com/Cable/)(donationware) |
 | ブラウザ | Microsoft Edge(Chromium系なら可) |
-| AI | ChatGPT アカウント(Web版の音声モードを使用) |
+| AI | ChatGPT アカウント(Web版の音声モードを使用:無料アカウントでも可) |
 | 声質変換 | Beatrice 2 の VST3 とモデル(**各自で入手**。モデルは再頒布禁止のため同梱していない) |
 | リモート接続 | [Tailscale](https://tailscale.com/)(iOSのマイク許可にHTTPSが必須のため) |
 
